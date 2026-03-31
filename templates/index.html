@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stegnographer - Secret File Transfer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="icon" type="image/png" href="/static/images/logo-removebg-preview.png">
+</head>
+<body>
+    <div id="toast-container" class="toast-container"></div>
+    <div class="background-anim"></div>
+    
+    <div class="container glass-panel">
+        <header>
+            <h1><i class="fa-solid fa-mask"></i> Stegnographer</h1>
+            <p>Secretly embed any file inside an image. Invisible to the eye, recoverable with a password.</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('encode')">Encode Data</button>
+            <button class="tab-btn" onclick="switchTab('decode')">Decode Data</button>
+        </div>
+
+        <!-- ENCODE SECTION -->
+        <main id="encode-section" class="active-section">
+            <div class="upload-area">
+                <div class="drop-zone" id="cover-drop-zone">
+                    <i class="fa-solid fa-image"></i>
+                    <p>Drop <b>Cover Image</b> here or click to upload</p>
+                    <input type="file" id="cover-input" accept="image/*" hidden>
+                    <div id="cover-preview-container" class="preview-container" style="display: none;">
+                        <img id="cover-preview-img" class="preview-img" style="display: none;">
+                        <span id="cover-preview-name" class="file-name"></span>
+                        <div class="action-btns">
+                            <button type="button" class="view-file-btn" onclick="openModal(event, 'cover-preview-img')"><i class="fa-solid fa-eye"></i></button>
+                            <button type="button" class="remove-file-btn" onclick="removeFile(event, 'cover-input', 'cover-preview-container', 'cover-preview-img', true)"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drop-zone" id="secret-drop-zone">
+                    <i class="fa-solid fa-file-shield"></i>
+                    <p>Drop <b>Secret File</b> here or click to upload</p>
+                    <p class="sub-text">(Any file format supported)</p>
+                    <p class="sub-text" style="margin-top: 0.5rem;">
+                        <span class="text-link" onclick="openTextModal(event)">✏️ Type text instead</span>
+                    </p>
+                    <input type="file" id="secret-input" hidden>
+                    <div id="secret-preview-container" class="preview-container" style="display: none;">
+                        <img id="secret-preview-img" class="preview-img" style="display: none;">
+                        <i id="secret-file-icon" class="fa-solid fa-file-lines preview-file-icon" style="display: none;"></i>
+                        <span id="secret-preview-name" class="file-name"></span>
+                        <div class="action-btns">
+                            <button type="button" class="view-file-btn" id="secret-view-btn" onclick="openModal(event, 'secret-preview-img')"><i class="fa-solid fa-eye"></i></button>
+                            <button type="button" class="view-file-btn" id="secret-view-text-btn" style="display:none;" onclick="viewTextContent(event)"><i class="fa-solid fa-eye"></i></button>
+                            <button type="button" class="remove-file-btn" onclick="removeFile(event, 'secret-input', 'secret-preview-container', 'secret-preview-img', true)"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-panel" id="stats-panel" style="display: none;">
+                <h3><i class="fa-solid fa-chart-pie"></i> Encryption Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <span class="stat-label">Resolution</span>
+                        <span class="stat-value" id="stat-res">-</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Total Pixels</span>
+                        <span class="stat-value" id="stat-pixels">-</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Max Capacity</span>
+                        <span class="stat-value" id="stat-cap" style="color: var(--accent-hover);">-</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">PSNR Quality</span>
+                        <span class="stat-value" id="stat-quality" style="color: var(--success);">-</span>
+                    </div>
+                    <div class="stat-box" id="secret-size-box" style="display: none;">
+                        <span class="stat-label">Raw File Size</span>
+                        <span class="stat-value" id="stat-sec-size">-</span>
+                    </div>
+                    <div class="stat-box" id="compressed-size-box" style="display: none;">
+                        <span class="stat-label">After Compression</span>
+                        <span class="stat-value" id="stat-comp-size">-</span>
+                    </div>
+                </div>
+                <div id="status-message" class="status-message"></div>
+            </div>
+
+            <div class="action-panel">
+                <div class="input-group">
+                    <i class="fa-solid fa-lock input-icon"></i>
+                    <input type="password" id="encode-password" class="glass-input" placeholder="Encryption Password" required>
+                    <i class="fa-solid fa-eye toggle-password" onclick="togglePassword('encode-password', this)"></i>
+                </div>
+                <div class="input-group" style="padding: 0.5rem 0;">
+                    <label style="flex:1; margin-left:1rem; font-weight:600; font-size: 0.95rem;">Hiding Strength:</label>
+                    <div class="custom-select" id="custom-encode-lsb" data-value="1">
+                        <div class="select-selected">Level 1 (Highest Quality)</div>
+                        <div class="select-items select-hide">
+                            <div data-val="1">Level 1 (Highest Quality)</div>
+                            <div data-val="2">Level 2 (Medium Capacity)</div>
+                            <div data-val="3">Level 3 (Max Capacity)</div>
+                        </div>
+                    </div>
+                </div>
+                <button class="primary-btn" id="encode-btn" onclick="startEncoding()">
+                    <i class="fa-solid fa-shield-halved"></i> Hide &amp; Download
+                </button>
+            </div>
+            
+            <div id="encode-loader" class="loader-container" style="display: none;">
+                <div class="progress-container">
+                    <div class="progress-bar" id="encode-progress"></div>
+                </div>
+                <p id="encode-step-text" class="step-text">Step 1/3: 📦 Compressing your file...</p>
+            </div>
+
+            <div id="encode-result" class="result-panel" style="display: none;">
+                <h3><i class="fa-regular fa-circle-check" style="color: var(--success);"></i> Encoding Complete</h3>
+                <img id="encode-result-img" class="result-img" />
+                <div class="rename-group">
+                    <div class="filename-edit-wrap">
+                        <input type="text" id="encode-stem" class="glass-input sm-input" placeholder="filename">
+                        <span id="encode-ext-label" class="ext-label"></span>
+                    </div>
+                    <input type="hidden" id="encode-ext">
+                    <button class="primary-btn sm-btn" onclick="downloadFile('encode')"><i class="fa-solid fa-download"></i> Save</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- DECODE SECTION -->
+        <main id="decode-section">
+            <div class="upload-area single">
+                <div class="drop-zone" id="stego-drop-zone">
+                    <i class="fa-solid fa-file-image"></i>
+                    <p>Drop <b>Steganographic Image</b> (.png) here or click to upload</p>
+                    <input type="file" id="stego-input" accept="image/png" hidden>
+                    <div id="stego-preview-container" class="preview-container" style="display: none;">
+                        <img id="stego-preview-img" class="preview-img" style="display: none;">
+                        <span id="stego-preview-name" class="file-name"></span>
+                        <div class="action-btns">
+                            <button type="button" class="view-file-btn" onclick="openModal(event, 'stego-preview-img')"><i class="fa-solid fa-eye"></i></button>
+                            <button type="button" class="remove-file-btn" onclick="removeFile(event, 'stego-input', 'stego-preview-container', 'stego-preview-img', false)"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-panel">
+                <div class="input-group">
+                    <i class="fa-solid fa-key input-icon"></i>
+                    <input type="password" id="decode-password" class="glass-input" placeholder="Decryption Password" required>
+                    <i class="fa-solid fa-eye toggle-password" onclick="togglePassword('decode-password', this)"></i>
+                </div>
+                <button class="primary-btn decode-btn" id="decode-btn" onclick="startDecoding()">
+                    <i class="fa-solid fa-unlock-keyhole"></i> Extract Secret File
+                </button>
+            </div>
+            
+            <div id="decode-loader" class="loader-container" style="display: none;">
+                <div class="progress-container">
+                    <div class="progress-bar" id="decode-progress"></div>
+                </div>
+                <p id="decode-step-text" class="step-text">Step 1/3: 🔍 Extracting from image...</p>
+            </div>
+
+            <div id="decode-result" class="result-panel" style="display: none;">
+                <h3><i class="fa-regular fa-circle-check" style="color: var(--success);"></i> Decrypt Success</h3>
+                <img id="decode-result-img" class="result-img" style="display: none;" />
+                <div class="rename-group">
+                    <div class="filename-edit-wrap">
+                        <input type="text" id="decode-stem" class="glass-input sm-input" placeholder="filename">
+                        <span id="decode-ext-label" class="ext-label"></span>
+                    </div>
+                    <input type="hidden" id="decode-ext">
+                    <button class="primary-btn decode-btn sm-btn" onclick="downloadFile('decode')"><i class="fa-solid fa-download"></i> Save Secret</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Image Lightbox Modal -->
+    <div id="image-modal" class="modal-backdrop" onclick="closeModal()">
+        <span class="close-modal">&times;</span>
+        <img id="modal-img" class="modal-content" onclick="event.stopPropagation()">
+    </div>
+
+    <!-- Text Encode Modal -->
+    <div id="text-modal" class="modal-backdrop" onclick="closeTextModal()">
+        <div class="text-modal-box" onclick="event.stopPropagation()">
+            <h3 style="margin-bottom:1rem;">✏️ Type your secret message</h3>
+            <textarea id="text-modal-input" class="glass-input" style="width:100%; height:180px; resize:vertical; padding:1rem; font-size:1rem;" placeholder="Enter your secret text..."></textarea>
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
+                <button class="primary-btn sm-btn" onclick="applyTextInput()">Use Text</button>
+                <button class="primary-btn sm-btn" style="background: rgba(255,255,255,0.1);" onclick="closeTextModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
