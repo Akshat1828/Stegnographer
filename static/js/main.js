@@ -242,7 +242,14 @@ async function checkStats() {
     const msgBox = document.getElementById('status-message');
     msgBox.style.display = 'block';
     msgBox.className = 'status-message';
-    msgBox.innerText = '⏳ Generating encryption statistics, please wait...';
+
+    // Animated dot cycle: . -> .. -> ... -> . 
+    let dotCount = 1;
+    msgBox.innerText = '⏳ Generating encryption statistics.';
+    const dotInterval = setInterval(() => {
+        dotCount = (dotCount % 3) + 1;
+        msgBox.innerText = '⏳ Generating encryption statistics' + '.'.repeat(dotCount);
+    }, 500);
 
     const formData = new FormData();
     formData.append('cover_image', coverFile);
@@ -253,6 +260,7 @@ async function checkStats() {
     try {
         const response = await fetch('/api/stats', { method: 'POST', body: formData });
         const data = await response.json();
+        clearInterval(dotInterval);
         if (!response.ok) { 
             showToast('Error fetching stats: ' + data.error, 'error');
             msgBox.innerText = '❌ Error calculating statistics.'; 
