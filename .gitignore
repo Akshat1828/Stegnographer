@@ -18,5 +18,7 @@ Thumbs.db
 secret.txt
 *.log
 *.tmp
+# Local documentation (not for repo)
+IMPLEMENTATION.md
 
 .vercel
