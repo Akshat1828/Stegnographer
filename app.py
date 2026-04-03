@@ -52,23 +52,26 @@ def get_stats():
         if secret_file:
             secret_bytes_data = secret_file.read()
             size = len(secret_bytes_data)
-            compressed_size = len(zlib.compress(secret_bytes_data, level=9))
             
-            # Use exact logic from stego_core to get the mathematically perfect final size
-            if compressed_size < size:
-                raw_payload = zlib.compress(secret_bytes_data, level=9)
-            else:
-                raw_payload = secret_bytes_data
-                
-            # Run it through the exact AES engine with a dummy password to calculate the padded/tokenized footprint
-            dummy_cipher = stego_core.get_cipher("dummy_password")
-            enc_payload = dummy_cipher.encrypt(raw_payload)
+            # For purely generating preview stats, use level=1 to calculate the worst-case compression boundary in milliseconds instead of seconds
+            compressed_size = len(zlib.compress(secret_bytes_data, level=1))
             
-            # The final embedded payload is the exact length of the encrypted package
-            actual_embedded = len(enc_payload)
+            # Mathematical calculation of AES-256 Fernet overhead footprint without actually running the CPU engine
+            raw_payload_len = compressed_size if compressed_size < size else size
+            
+            # PKCS7 padding to 16 bytes
+            padding_len = 16 - (raw_payload_len % 16)
+            # 57 bytes of structure (Version + Timestamp + IV + HMAC)
+            total_raw_bytes = 57 + raw_payload_len + padding_len
+            # Base64url encoding formula: ceil(bytes / 3) * 4
+            enc_size = ((total_raw_bytes + 2) // 3) * 4
+            
+            # Account for the custom payload header injected by stego_core (1 byte + ext length + 4 bytes)
+            header_overhead = 1 + len(get_file_extension(secret_file.filename).encode('utf-8')) + 4
+            actual_embedded = enc_size + header_overhead
             
             response['secret_size_bytes'] = size
-            response['compressed_size_bytes'] = len(raw_payload)
+            response['compressed_size_bytes'] = raw_payload_len
             response['encrypted_size_bytes'] = actual_embedded
             response['fits'] = actual_embedded < max_bytes
             

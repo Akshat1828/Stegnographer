@@ -224,6 +224,14 @@ async function checkStats() {
 
     if (!coverFile) return;
 
+    // Immediately lock UI to prevent race conditions while server calculates AES footprint
+    document.getElementById('encode-btn').disabled = true;
+    lockLsbOptions(4); 
+    const msgBox = document.getElementById('status-message');
+    msgBox.style.display = 'block';
+    msgBox.className = 'status-message';
+    msgBox.innerText = '⏳ Generating Cryptographic statistics... please wait.';
+
     const formData = new FormData();
     formData.append('cover_image', coverFile);
     if (secretFile) formData.append('secret_file', secretFile);
@@ -233,7 +241,11 @@ async function checkStats() {
     try {
         const response = await fetch('/api/stats', { method: 'POST', body: formData });
         const data = await response.json();
-        if (!response.ok) { showToast('Error fetching stats: ' + data.error, 'error'); return; }
+        if (!response.ok) { 
+            showToast('Error fetching stats: ' + data.error, 'error');
+            msgBox.innerText = '❌ Error calculating statistics.'; 
+            return; 
+        }
 
         document.getElementById('stats-panel').style.display = 'block';
         document.getElementById('stat-res').innerText = `${data.width} × ${data.height}`;
