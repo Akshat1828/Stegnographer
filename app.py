@@ -9,8 +9,9 @@ from PIL import Image
 import stego_core
 
 app = Flask(__name__)
+# Vercel has a 4.5MB limit for hobby projects, and /tmp is the only writable directory
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = '/tmp'
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 

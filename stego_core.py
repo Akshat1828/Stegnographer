@@ -6,12 +6,20 @@ import random
 import struct
 import math
 import os
+import base64
+from cryptography.fernet import Fernet
+
+def get_cipher(password):
+    # Derive a 32-byte key from the password to use with Fernet
+    key = hashlib.sha256(password.encode('utf-8')).digest()
+    b64_key = base64.urlsafe_b64encode(key)
+    return Fernet(b64_key)
 
 # Generate a Warnsdorff's Knight's Tour for an 8x8 block (0-63 sequence)
-def generate_8x8_tour():
+def generate_8x8_tour(start_pixel=0):
     board = [[-1 for _ in range(8)] for _ in range(8)]
     moves = [(2, 1), (1, 2), (-1, 2), (-2, 1), (-2, -1), (-1, -2), (1, -2), (2, -1)]
-    r, c = 0, 0
+    r, c = start_pixel // 8, start_pixel % 8
     board[r][c] = 0
     route = [(r, c)]
     for step in range(1, 64):
@@ -31,8 +39,6 @@ def generate_8x8_tour():
         route.append((r, c))
     return [r * 8 + c for r, c in route]
 
-TOUR_8x8 = generate_8x8_tour()
-
 def get_capacity(width, height, lsb_count=1):
     """Returns the maximum amount of encodable bytes (after compression)"""
     nx, ny = width // 8, height // 8
@@ -50,18 +56,22 @@ def build_pixel_sequence(width, height, password):
     seed = int.from_bytes(h, "big")
     rng = random.Random(seed)
     
+    # Generate the unique Knight's Tour path for this password
+    start_pixel = rng.randint(0, 63)
+    tour_8x8 = generate_8x8_tour(start_pixel)
+    
     block_indices = list(range(total_blocks))
     rng.shuffle(block_indices)
     
-    return block_indices, nx, ny
+    return block_indices, nx, ny, tour_8x8
 
-def get_pixel_coords(block_idx, nx, ny, step_in_block):
+def get_pixel_coords(block_idx, nx, ny, step_in_block, tour_8x8):
     # From block index, get block X and Y
     bx = block_idx % nx
     by = block_idx // nx
     
     # From step in block, get which pixel in the 8x8 tour
-    pixel_idx = TOUR_8x8[step_in_block]
+    pixel_idx = tour_8x8[step_in_block]
     px = pixel_idx % 8
     py = pixel_idx // 8
     
@@ -84,34 +94,39 @@ def encode(cover_image_path, secret_bytes, ext, password, output_path, lsb_count
     # Compress only if it actually helps
     compressed_attempt = zlib.compress(secret_bytes, level=9)
     if len(compressed_attempt) < len(secret_bytes):
-        payload_data = compressed_attempt
+        raw_payload = compressed_attempt
         is_compressed = 1
     else:
-        payload_data = secret_bytes
+        raw_payload = secret_bytes
         is_compressed = 0
-    report(1, "Compressing your file", 25)
+    report(1, "Compressing your file", 20)
+    
+    # Encrypt the payload and mathematically lock it
+    cipher = get_cipher(password)
+    enc_payload = cipher.encrypt(raw_payload)
+    report(2, "Encrypting your file", 30)
     
     # Build payload: [ext_len:1][ext:n][flags:1][data_len:4][data]
     # flags bit 0: 1 = zlib compressed, 0 = raw
     ext_bytes = ext.encode('utf-8')
     ext_len = len(ext_bytes)
-    data_len = len(payload_data)
+    data_len = len(enc_payload)
     
-    payload = struct.pack(f'>B{ext_len}sBi', ext_len, ext_bytes, is_compressed, data_len) + payload_data
+    payload = struct.pack(f'>B{ext_len}sBi', ext_len, ext_bytes, is_compressed, data_len) + enc_payload
     payload_bits = np.unpackbits(np.frombuffer(payload, dtype=np.uint8))
     total_bits = len(payload_bits)
-    report(2, "Encrypting your file", 35)
+    report(2, "Structuring your file", 40)
     
     max_bytes = get_capacity(width, height, lsb_count) - 1
     if total_bits > max_bytes * 8:
         raise ValueError(f"Payload too large. Max capacity with selected depth is {max_bytes} bytes, but requires {math.ceil(total_bits/8)} bytes.")
     
-    block_indices, nx, ny = build_pixel_sequence(width, height, password)
-    report(2, "Encrypting your file", 50)
+    block_indices, nx, ny, tour_8x8 = build_pixel_sequence(width, height, password)
+    report(2, "Generating Spatial Path", 50)
     
     # Embed (lsb_count-1) into the first pixel's two LSBs so 0=1bit,1=2bits,2=3bits
     meta_val = lsb_count - 1  # 0, 1, or 2
-    abs_x, abs_y = get_pixel_coords(block_indices[0], nx, ny, 0)
+    abs_x, abs_y = get_pixel_coords(block_indices[0], nx, ny, 0, tour_8x8)
     pixels[abs_y, abs_x, 0] = int((pixels[abs_y, abs_x, 0] & 254) | ((meta_val >> 1) & 1))
     pixels[abs_y, abs_x, 1] = int((pixels[abs_y, abs_x, 1] & 254) | (meta_val & 1))
     
@@ -134,7 +149,7 @@ def encode(cover_image_path, secret_bytes, ext, password, output_path, lsb_count
         for step in range(start_step, 64):
             if done:
                 break
-            abs_x, abs_y = get_pixel_coords(block_idx, nx, ny, step)
+            abs_x, abs_y = get_pixel_coords(block_idx, nx, ny, step, tour_8x8)
             # Encode in RGB
             for channel in range(3):
                 if bit_idx < total_bits:
@@ -169,11 +184,11 @@ def decode(stego_image_path, password, progress_callback=None):
     width, height = img.size
     pixels = np.array(img, dtype=np.uint8)
     
-    block_indices, nx, ny = build_pixel_sequence(width, height, password)
-    report(1, "Extracting from image", 20)
+    block_indices, nx, ny, tour_8x8 = build_pixel_sequence(width, height, password)
+    report(1, "Mapping Pixel Path", 20)
     
     # Extract lsb_count from the first pixel of the first block (stored as lsb_count-1)
-    abs_x, abs_y = get_pixel_coords(block_indices[0], nx, ny, 0)
+    abs_x, abs_y = get_pixel_coords(block_indices[0], nx, ny, 0, tour_8x8)
     bit2 = int(pixels[abs_y, abs_x, 0]) & 1
     bit1 = int(pixels[abs_y, abs_x, 1]) & 1
     meta_val = (bit2 << 1) | bit1
@@ -188,7 +203,7 @@ def decode(stego_image_path, password, progress_callback=None):
                 report(2, "Decrypting data", pct)
             start_step = 1 if i == 0 else 0
             for step in range(start_step, 64):
-                abs_x, abs_y = get_pixel_coords(block_idx, nx, ny, step)
+                abs_x, abs_y = get_pixel_coords(block_idx, nx, ny, step, tour_8x8)
                 for channel in range(3):
                     pixel_val = pixels[abs_y, abs_x, channel]
                     for i in range(lsb_count - 1, -1, -1):
@@ -240,18 +255,26 @@ def decode(stego_image_path, password, progress_callback=None):
     if data_len > get_capacity(width, height, lsb_count) or data_len < 0:
         raise Exception("Failed to decode: Corrupted payload length. Wrong password?")
     
-    report(3, "Decompressing file", 75)
-    payload_data = read_bytes(data_len)
-    if not payload_data:
-        raise Exception("Failed to decode.")
+    
+    report(3, "Decrypting Data", 75)
+    enc_payload_data = read_bytes(data_len)
+    if not enc_payload_data:
+        raise Exception("Failed to decode: Data corrupted or wrong password.")
         
+    # Decrypt AES Cryptography
+    cipher = get_cipher(password)
+    try:
+        raw_payload = cipher.decrypt(enc_payload_data)
+    except Exception:
+        raise Exception("Failed to decode: Invalid Password. Cryptographic unlock failed.")
+
     if is_compressed:
         try:
-            secret_bytes = zlib.decompress(payload_data)
+            secret_bytes = zlib.decompress(raw_payload)
         except zlib.error:
-            raise Exception("Failed to decode: Decompression failed. Wrong password.")
+            raise Exception("Failed to decode: Decompression failed.")
     else:
-        secret_bytes = payload_data
+        secret_bytes = raw_payload
     
-    report(3, "Decompressing file", 100)
+    report(3, "Finished Decoding", 100)
     return secret_bytes, ext

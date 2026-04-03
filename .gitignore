@@ -18,3 +18,5 @@ Thumbs.db
 secret.txt
 *.log
 *.tmp
+
+.vercel
