@@ -53,9 +53,23 @@ def get_stats():
             secret_bytes_data = secret_file.read()
             size = len(secret_bytes_data)
             compressed_size = len(zlib.compress(secret_bytes_data, level=9))
-            actual_embedded = min(size, compressed_size)  # matches stego_core logic
+            
+            # Use exact logic from stego_core to get the mathematically perfect final size
+            if compressed_size < size:
+                raw_payload = zlib.compress(secret_bytes_data, level=9)
+            else:
+                raw_payload = secret_bytes_data
+                
+            # Run it through the exact AES engine with a dummy password to calculate the padded/tokenized footprint
+            dummy_cipher = stego_core.get_cipher("dummy_password")
+            enc_payload = dummy_cipher.encrypt(raw_payload)
+            
+            # The final embedded payload is the exact length of the encrypted package
+            actual_embedded = len(enc_payload)
+            
             response['secret_size_bytes'] = size
-            response['compressed_size_bytes'] = compressed_size
+            response['compressed_size_bytes'] = len(raw_payload)
+            response['encrypted_size_bytes'] = actual_embedded
             response['fits'] = actual_embedded < max_bytes
             
         return jsonify(response)

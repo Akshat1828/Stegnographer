@@ -249,19 +249,21 @@ async function checkStats() {
             document.getElementById('secret-size-box').style.display = 'flex';
             document.getElementById('compressed-size-box').style.display = 'flex';
             document.getElementById('stat-sec-size').innerText = formatBytes(data.secret_size_bytes);
-            const savedPct = ((1 - data.compressed_size_bytes / data.secret_size_bytes) * 100).toFixed(1);
-            let savedStr;
-            if (data.compressed_size_bytes < data.secret_size_bytes) {
-                savedStr = ` (−${savedPct}% saved)`;
-            } else if (data.compressed_size_bytes === data.secret_size_bytes) {
-                savedStr = ' (no change)';
+            // Use the absolute perfect AES-encrypted size sent from the backend
+            const actualEmbedded = data.encrypted_size_bytes || data.compressed_size_bytes;
+            
+            let modStr;
+            if (actualEmbedded < data.secret_size_bytes) {
+                const savedPct = ((1 - actualEmbedded / data.secret_size_bytes) * 100).toFixed(1);
+                modStr = ` (−${savedPct}%)`;
             } else {
-                savedStr = ' (zlib overhead > savings - file too small)';
+                let diff = actualEmbedded - data.secret_size_bytes;
+                modStr = ` (+${diff} bytes AES padded)`;
             }
-            document.getElementById('stat-comp-size').innerText = formatBytes(data.compressed_size_bytes) + savedStr;
+            
+            document.getElementById('stat-comp-size').innerText = formatBytes(actualEmbedded) + modStr;
 
             // Quality based on what actually gets embedded
-            const actualEmbedded = Math.min(data.secret_size_bytes, data.compressed_size_bytes);
             const psnr = calcPSNR(actualEmbedded, data.pixels, lsbVal);
             const q = psnrLabel(psnr);
             document.getElementById('stat-quality').innerText = q.text;
@@ -271,7 +273,7 @@ async function checkStats() {
             const cap1 = data.capacity_bytes / lsbVal;
             const cap2 = cap1 * 2;
             const cap3 = cap1 * 3;
-            const embeddedSize = Math.min(data.secret_size_bytes, data.compressed_size_bytes);
+            const embeddedSize = actualEmbedded;
 
             let minDepth = null;
             if (embeddedSize <= cap1) minDepth = 1;
