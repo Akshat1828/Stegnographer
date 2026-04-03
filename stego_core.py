@@ -103,7 +103,9 @@ def encode(cover_image_path, secret_bytes, ext, password, output_path, lsb_count
     
     # Encrypt the payload and mathematically lock it
     cipher = get_cipher(password)
-    enc_payload = cipher.encrypt(raw_payload)
+    enc_payload_b64 = cipher.encrypt(raw_payload)
+    # Strip the 33% textual Base64 bloat down to pure raw binary bytes for maximum efficiency!
+    enc_payload = base64.urlsafe_b64decode(enc_payload_b64)
     report(2, "Encrypting your file", 30)
     
     # Build payload: [ext_len:1][ext:n][flags:1][data_len:4][data]
@@ -264,7 +266,9 @@ def decode(stego_image_path, password, progress_callback=None):
     # Decrypt AES Cryptography
     cipher = get_cipher(password)
     try:
-        raw_payload = cipher.decrypt(enc_payload_data)
+        # Re-apply the base64 textual mask to our raw binary payload so Fernet can digest and unlock it
+        enc_payload_b64 = base64.urlsafe_b64encode(enc_payload_data)
+        raw_payload = cipher.decrypt(enc_payload_b64)
     except Exception:
         raise Exception("Failed to decode: Invalid Password. Cryptographic unlock failed.")
 

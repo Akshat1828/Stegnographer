@@ -63,11 +63,12 @@ def get_stats():
             padding_len = 16 - (raw_payload_len % 16)
             # 57 bytes of structure (Version + Timestamp + IV + HMAC)
             total_raw_bytes = 57 + raw_payload_len + padding_len
-            # Base64url encoding formula: ceil(bytes / 3) * 4
-            enc_size = ((total_raw_bytes + 2) // 3) * 4
             
-            # Account for the custom payload header injected by stego_core (1 byte + ext length + 4 bytes)
-            header_overhead = 1 + len(get_file_extension(secret_file.filename).encode('utf-8')) + 4
+            # The base64 text bloat is artificially stripped before embedding, so overhead is 0%
+            enc_size = total_raw_bytes
+            
+            # Account for the custom payload header injected by stego_core: [ext_len:1][ext:n][flags:1][data_len:4]
+            header_overhead = 1 + len(get_file_extension(secret_file.filename).encode('utf-8')) + 1 + 4
             actual_embedded = enc_size + header_overhead
             
             response['secret_size_bytes'] = size

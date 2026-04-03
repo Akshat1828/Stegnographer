@@ -3,6 +3,13 @@ let currentDecodeUrl = null;
 
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
+
+    // Limit to 5 active toasts — remove oldest if over limit
+    const existing = container.querySelectorAll('.toast');
+    if (existing.length >= 5) {
+        existing[0].remove();
+    }
+
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
 
@@ -191,14 +198,17 @@ function unlockLsbOptions() {
         item.removeAttribute('title');
     });
     const btn = document.getElementById('encode-btn');
-    if (btn) btn.disabled = false;
+    if (btn) {
+        btn.dataset.locked = "false";
+        btn.classList.remove('locked-btn');
+    }
 }
 
 // --- PSNR Quality Calculation ---
 // When n LSBs are replaced with random data, expected MSE per channel = (2^(2n) - 1) / 6
 // Actual PSNR depends on what fraction of pixels are actually modified (compressed payload / total pixels)
 function calcPSNR(compressedBytes, totalPixels, lsbVal) {
-    const HEADER_OVERHEAD = 10; // 1 ext_len + ~5 ext chars + 4 data_len bytes
+    const HEADER_OVERHEAD = 11; // [ext_len:1][ext:~4][flags:1][data_len:4] = 10-11 bytes
     const payloadBytes = compressedBytes + HEADER_OVERHEAD;
     const bitsNeeded = payloadBytes * 8;
     const pixelsNeeded = Math.ceil(bitsNeeded / (lsbVal * 3)); // 3 channels per pixel
@@ -225,12 +235,14 @@ async function checkStats() {
     if (!coverFile) return;
 
     // Immediately lock UI to prevent race conditions while server calculates AES footprint
-    document.getElementById('encode-btn').disabled = true;
+    const encodeBtn = document.getElementById('encode-btn');
+    encodeBtn.dataset.locked = "calculating";
+    encodeBtn.classList.add("locked-btn");
     lockLsbOptions(4); 
     const msgBox = document.getElementById('status-message');
     msgBox.style.display = 'block';
     msgBox.className = 'status-message';
-    msgBox.innerText = '⏳ Generating Cryptographic statistics... please wait.';
+    msgBox.innerText = '⏳ Generating encryption statistics, please wait...';
 
     const formData = new FormData();
     formData.append('cover_image', coverFile);
@@ -294,7 +306,9 @@ async function checkStats() {
 
             if (minDepth !== null) {
                 lockLsbOptions(minDepth);
-                document.getElementById('encode-btn').disabled = false;
+                const encodeBtn = document.getElementById('encode-btn');
+                encodeBtn.dataset.locked = "false";
+                encodeBtn.classList.remove("locked-btn");
                 if (minDepth === 1) {
                     msgBox.classList.add('status-success');
                     msgBox.innerText = 'Great! Fits at Level 1 — no quality impact.';
@@ -306,7 +320,9 @@ async function checkStats() {
                 }
             } else {
                 lockLsbOptions(4);
-                document.getElementById('encode-btn').disabled = true;
+                const encodeBtn = document.getElementById('encode-btn');
+                encodeBtn.dataset.locked = "toolarge";
+                encodeBtn.classList.add("locked-btn");
                 msgBox.classList.add('status-error');
                 msgBox.innerText = '❌ File is too large even at Level 3. Please choose a larger cover image or a smaller file.';
                 showToast('File too large for any level! Use a bigger cover image.', 'error');
@@ -330,6 +346,16 @@ async function checkStats() {
 
 
 async function startEncoding() {
+    const btn = document.getElementById('encode-btn');
+    if (btn.dataset.locked === "calculating") {
+        showToast("Please wait for encoding statistics to finish!", "info");
+        return;
+    }
+    if (btn.dataset.locked === "toolarge") {
+        showToast("File is too large! Please choose a smaller secret file or a bigger cover image.", "error");
+        return;
+    }
+
     const coverFile = document.getElementById('cover-input').files[0];
     const secretFile = document.getElementById('secret-input').files[0];
     const password = document.getElementById('encode-password').value;
@@ -360,13 +386,13 @@ async function startEncoding() {
         const resp = await fetch('/api/encode', { method: 'POST', body: formData });
         const data = await resp.json();
         if (!resp.ok) {
-            showToast("Snucking failed: " + data.error, "error");
+            showToast("Encoding failed: " + data.error, "error");
             document.getElementById('encode-loader').style.display = 'none';
             return;
         }
         taskId = data.task_id;
     } catch (err) {
-        showToast("Network error starting snucking.", "error");
+        showToast("Network error starting encoding.", "error");
         document.getElementById('encode-loader').style.display = 'none';
         return;
     }

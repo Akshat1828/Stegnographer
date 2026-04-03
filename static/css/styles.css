@@ -386,6 +386,16 @@ main.active-section {
     transform: translateY(0);
 }
 
+.primary-btn.locked-btn {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.primary-btn.locked-btn:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 .decode-btn {
     background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
 }
